@@ -24,13 +24,17 @@ use stdClass;
 
 use function class_exists;
 use function count;
+use function error_reporting;
 use function fclose;
 use function fopen;
 use function register_shutdown_function;
 use function rewind;
 use function set_exception_handler;
 use function stream_get_contents;
+use function trigger_error;
 
+use const E_ALL;
+use const E_USER_DEPRECATED;
 use const E_USER_NOTICE;
 use const PHP_VERSION_ID;
 
@@ -233,6 +237,25 @@ class LoggerTest extends TestCase
     {
         $this->expectException(InvalidArgumentException::class);
         $this->logger->log(Logger::ERR, $message, $extra);
+    }
+
+    public function testErrorHandlerContinuesToLogDeprecations(): void
+    {
+        $writer = new MockWriter();
+        $this->logger->addWriter($writer);
+        $previousReporting = error_reporting(E_ALL);
+        Logger::registerErrorHandler($this->logger);
+
+        try {
+            trigger_error('Deprecation diagnostic', E_USER_DEPRECATED);
+        } finally {
+            Logger::unregisterErrorHandler();
+            error_reporting($previousReporting);
+        }
+
+        $this->assertCount(1, $writer->events);
+        $this->assertSame('Deprecation diagnostic', $writer->events[0]['message']);
+        $this->assertSame(Logger::DEBUG, $writer->events[0]['priority']);
     }
 
     public function testRegisterErrorHandler(): void
